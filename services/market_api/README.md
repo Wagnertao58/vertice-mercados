@@ -15,21 +15,28 @@ python -m uvicorn vertice_api.main:app --reload --port 8000
 
 A documenta??o interativa fica em `http://localhost:8000/docs`.
 
-## Neon PostgreSQL
+## Modo gratuito da Fase 1
 
-Em produ??o, defina `DATABASE_URL` com a conex?o direta copiada do bot?o
-**Connect** do projeto Neon. A conex?o deve manter `sslmode=require`. Nunca
-salve a URL real em arquivos versionados ou no GitHub.
+A API funciona sem banco externo. Quando `DATABASE_URL` não for definida, ela
+usa SQLite e cria automaticamente as tabelas, os índices e o catálogo de ativos.
+O endpoint `/health` informa se o backend ativo é `sqlite` ou `postgresql`.
 
-Na primeira inicializa??o, a API cria as tabelas e ?ndices necess?rios e
-registra o cat?logo de ativos. O endpoint `/health` confirma a conex?o e informa
-se o backend ativo ? `sqlite` ou `postgresql`.
+No serviço gratuito do Render, o arquivo SQLite é temporário. O cache pode ser
+reconstruído após uma reinicialização ou nova implantação. Isso é aceitável
+para validar a Fase 1, mas não é o armazenamento histórico definitivo.
+
+## PostgreSQL opcional
+
+Quando precisarmos preservar séries históricas, carteiras e resultados de
+modelos, basta definir `DATABASE_URL` com a conexão segura de qualquer
+PostgreSQL compatível. A URL deve permanecer nos segredos do provedor e nunca
+deve ser salva no GitHub.
 
 ## Render
 
-O arquivo `render.yaml` da raiz prepara o servi?o web, o health check e solicita
-o valor secreto de `DATABASE_URL` durante a cria??o. O painel continua separado
-e recebe apenas a URL p?blica da API.
+O arquivo `render.yaml` da raiz prepara o serviço web gratuito e seu health
+check. Nesta fase ele não exige banco externo. O painel continua separado e
+recebe apenas a URL pública da API.
 
 ## Fonte de desenvolvimento
 
