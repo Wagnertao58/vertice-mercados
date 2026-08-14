@@ -44,8 +44,10 @@ yarn-error.log*
 # python
 __pycache__/
 *.py[cod]
+.venv/
 *.db
 *.sqlite
 *.sqlite3
 /services/market_api/data/
+
 

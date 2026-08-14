@@ -13,7 +13,7 @@ from .providers.yahoo_chart import MarketDataError, YahooChartProvider
 from .service import MarketService, UnknownAssetError
 
 settings = load_settings()
-database = Database(settings.database_path)
+database = Database(settings.database_url)
 provider = YahooChartProvider(settings.request_timeout_seconds)
 service = MarketService(database, provider, settings)
 
@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Vertice Market API",
     description="Daily market data, analytics and BDR parity for the Vertice dashboard.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -42,12 +42,22 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    return {"status": "ok", "service": "vertice-market-api", "time": datetime.now(UTC).isoformat()}
+    try:
+        database.ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    return {
+        "status": "ok",
+        "service": "vertice-market-api",
+        "database": database.backend_name,
+        "time": datetime.now(UTC).isoformat(),
+    }
 
 
 @app.get("/v1/assets")
 def assets(asset_class: str | None = None) -> dict[str, object]:
-    return {"assets": database.list_assets(asset_class), "count": len(database.list_assets(asset_class))}
+    items = database.list_assets(asset_class)
+    return {"assets": items, "count": len(items)}
 
 
 @app.get("/v1/assets/{ticker}/snapshot")

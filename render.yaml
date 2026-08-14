@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: vertice-market-api
+    runtime: python
+    plan: free
+    region: ohio
+    rootDir: services/market_api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn vertice_api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_ORIGIN
+        value: https://vertice-mercados.wagnertao58.chatgpt.site
+      - key: MARKET_CACHE_MINUTES
+        value: "720"
+      - key: MARKET_REQUEST_TIMEOUT
+        value: "20"
