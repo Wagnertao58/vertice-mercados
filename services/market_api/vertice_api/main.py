@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Vertice Market API",
     description="Daily market data, analytics and BDR parity for the Vertice dashboard.",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -84,7 +84,10 @@ def bdr_parity(ticker: str, refresh: bool = Query(False)) -> dict[str, object]:
 
 @app.get("/v1/market/overview")
 def market_overview(
-    tickers: str = Query("TEAM,RNG,T1AM34,R2NG34,NVDA,PETR4,IBOV,SP500,NASDAQ,USD-BRL,VIX"),
+    tickers: str = Query(
+        "TEAM,RNG,NVDA,AAPL,MSFT,AMZN,GOOGL,META,PETR4,VALE3,ITUB4,"
+        "T1AM34,R2NG34,IBOV,SP500,NASDAQ,VIX,USD-BRL,EUR-BRL,EUR-USD"
+    ),
 ) -> dict[str, object]:
     requested = [ticker.strip().upper() for ticker in tickers.split(",") if ticker.strip()]
     snapshots: list[dict[str, object]] = []

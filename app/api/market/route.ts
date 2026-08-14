@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const response = await fetch(`${marketApiUrl}/v1/market/overview`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new Error(`Market API returned ${response.status}`);
     return Response.json(await response.json());

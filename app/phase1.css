@@ -1,0 +1,65 @@
+.dot.online {
+  background: #63cbb6;
+  box-shadow: 0 0 0 3px #63cbb61f;
+}
+
+.source-note small {
+  color: #6f928b;
+}
+
+.auto-note {
+  display: inline-block;
+  margin: 9px 0 0;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #e8f2ef;
+  color: #247663;
+  font-size: 8px;
+  letter-spacing: .4px;
+}
+
+.header-actions {
+  align-items: center;
+}
+
+.refresh {
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.refresh:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.explorer input {
+  width: 285px;
+}
+
+.asset-chips {
+  padding-bottom: 3px;
+}
+
+.asset-chips button {
+  min-width: 142px;
+}
+
+.asset-chips small {
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .refresh {
+    padding: 0 10px;
+  }
+
+  .explorer input {
+    width: 160px;
+  }
+}

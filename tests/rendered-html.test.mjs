@@ -34,6 +34,8 @@ test("server-renders the Vertice dashboard", async () => {
   assert.match(html, /Atlassian/);
   assert.match(html, /BDRs &amp; spreads/);
   assert.match(html, /Conector Python preparado/);
+  assert.match(html, /Atualização automática a cada 5 min/);
+  assert.match(html, /USD-BRL/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
