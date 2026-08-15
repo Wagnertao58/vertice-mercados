@@ -36,6 +36,9 @@ test("server-renders the Vertice dashboard", async () => {
   assert.match(html, /Conector Python preparado/);
   assert.match(html, /Atualização automática a cada 5 min/);
   assert.match(html, /USD-BRL/);
+  assert.match(html, /Valorização com menor variância/);
+  assert.match(html, /Score relativo/);
+  assert.match(html, /40% retorno em 1 mês/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });

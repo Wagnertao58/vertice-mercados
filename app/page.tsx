@@ -33,6 +33,54 @@ const demoAssets: Asset[] = [
 
 const periods = ["1D", "5D", "1M", "6M", "1A", "5A"];
 
+type MarketFilter = "all" | "brazil" | "usa" | "fx";
+type ClassFilter = "all" | "stock" | "bdr" | "index" | "currency";
+type RankedAsset = Asset & { score: number; assetClass: ClassFilter };
+
+const bdrTickers = new Set(["T1AM34", "R2NG34"]);
+const indexTickers = new Set(["IBOV", "SP500", "NASDAQ", "VIX"]);
+
+function classifyAsset(item: Asset): Exclude<ClassFilter, "all"> {
+  if (bdrTickers.has(item.ticker)) return "bdr";
+  if (indexTickers.has(item.ticker)) return "index";
+  if (item.market === "FX") return "currency";
+  return "stock";
+}
+
+function classifyMarket(item: Asset): Exclude<MarketFilter, "all"> {
+  if (item.market === "B3") return "brazil";
+  if (item.market === "FX") return "fx";
+  return "usa";
+}
+
+function normalized(value: number, values: number[], inverse = false) {
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const result = maximum === minimum ? 1 : (value - minimum) / (maximum - minimum);
+  return inverse ? 1 - result : result;
+}
+
+function rankAssets(items: Asset[]): RankedAsset[] {
+  const eligible = items.filter((item) => item.price > 0 && Number.isFinite(item.month) && Number.isFinite(item.volatility));
+  if (!eligible.length) return [];
+  const monthlyReturns = eligible.map((item) => item.month);
+  const yearlyReturns = eligible.map((item) => item.year);
+  const volatilities = eligible.map((item) => item.volatility);
+  const drawdowns = eligible.map((item) => Math.abs(item.drawdown));
+  return eligible.map((item) => {
+    const score = 100 * (
+      normalized(item.month, monthlyReturns) * .40 +
+      normalized(item.volatility, volatilities, true) * .30 +
+      normalized(Math.abs(item.drawdown), drawdowns, true) * .20 +
+      normalized(item.year, yearlyReturns) * .10
+    );
+    return { ...item, score: Math.round(score), assetClass: classifyAsset(item) };
+  }).sort((left, right) => right.score - left.score);
+}
+
+const marketLabels: Record<MarketFilter, string> = { all: "Todos os mercados", brazil: "Brasil", usa: "Estados Unidos", fx: "Câmbio" };
+const classLabels: Record<ClassFilter, string> = { all: "Todas as classes", stock: "Ações", bdr: "BDRs", index: "Índices", currency: "Moedas" };
+
 type ApiAsset = {
   ticker: string; price: number; day_change_pct: number; return_1m_pct: number;
   return_1y_pct: number; annualized_volatility_pct: number | null;
@@ -49,6 +97,8 @@ export default function Home() {
   const [dataMode, setDataMode] = useState<"loading" | "live" | "demo" | "unavailable">("loading");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [rankingMarket, setRankingMarket] = useState<MarketFilter>("all");
+  const [rankingClass, setRankingClass] = useState<ClassFilter>("stock");
   const loadingRef = useRef(false);
   const watch = assets.slice(0, 5);
   const asset = assets.find((item) => item.ticker === selected) ?? assets[0];
@@ -56,6 +106,10 @@ export default function Home() {
   const theoretical = asset.ticker === "TEAM" ? asset.price * usd / 20 : asset.ticker === "RNG" ? asset.price * usd / 25 : null;
   const strip = ["IBOV", "SP500", "NASDAQ", "USD-BRL", "VIX"].map((ticker) => assets.find((item) => item.ticker === ticker)).filter((item): item is Asset => Boolean(item));
   const updatedAt = lastUpdated ? Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(lastUpdated) : null;
+  const ranking = useMemo(() => rankAssets(assets.filter((item) =>
+    (rankingMarket === "all" || classifyMarket(item) === rankingMarket) &&
+    (rankingClass === "all" || classifyAsset(item) === rankingClass)
+  )).slice(0, 8), [assets, rankingClass, rankingMarket]);
 
   const loadMarketData = useCallback(async (initial = false) => {
     if (loadingRef.current) return;
@@ -120,6 +174,31 @@ export default function Home() {
         <div className="ticker-strip">
           {strip.map((item) => <div key={item.ticker}><small>{item.ticker === "SP500" ? "S&P 500" : item.ticker === "USD-BRL" ? "USD/BRL" : item.ticker}</small><strong>{item.currency}{item.currency ? " " : ""}{item.price.toLocaleString("pt-BR", { minimumFractionDigits: item.ticker === "USD-BRL" ? 4 : item.price >= 1000 ? 0 : 2, maximumFractionDigits: item.ticker === "USD-BRL" ? 4 : item.price >= 1000 ? 0 : 2 })}</strong><em className={item.change >= 0 ? "up" : "down"}>{item.change >= 0 ? "+" : ""}{item.change.toFixed(2)}%</em></div>)}
         </div>
+
+        <section className="card ranking-card">
+          <div className="ranking-head">
+            <div><p className="eyebrow">RANKING DE CONSISTÊNCIA</p><h3>Valorização com menor variância</h3><p>Compare retorno e risco dentro do universo selecionado.</p></div>
+            <div className="ranking-filters">
+              <label>Mercado<select aria-label="Filtrar ranking por mercado" value={rankingMarket} onChange={(event) => setRankingMarket(event.target.value as MarketFilter)}>{Object.entries(marketLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label>Classe<select aria-label="Filtrar ranking por classe" value={rankingClass} onChange={(event) => setRankingClass(event.target.value as ClassFilter)}>{Object.entries(classLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            </div>
+          </div>
+          <div className="ranking-scroll">
+            <table>
+              <thead><tr><th>Posição e ativo</th><th>Mercado</th><th>Retorno 1M</th><th>Volatilidade</th><th>Drawdown</th><th>Score relativo</th></tr></thead>
+              <tbody>{ranking.map((item, index) => <tr key={item.ticker}>
+                <td><span className="rank-number">{index + 1}</span><button className="rank-asset" onClick={() => setSelected(item.ticker)}><i style={{background: item.color}}>{item.ticker[0]}</i><span><strong>{item.ticker}</strong><small>{item.name}</small></span></button></td>
+                <td><strong className="market-badge">{item.market}</strong><small>{classLabels[item.assetClass]}</small></td>
+                <td><strong className={item.month >= 0 ? "up" : "down"}>{item.month >= 0 ? "+" : ""}{item.month.toFixed(1)}%</strong></td>
+                <td>{item.volatility.toFixed(1)}%</td>
+                <td className="down">{item.drawdown.toFixed(1)}%</td>
+                <td><div className="score-cell"><strong>{item.score}</strong><span><i style={{width: `${item.score}%`}} /></span></div></td>
+              </tr>)}</tbody>
+            </table>
+            {!ranking.length && <p className="ranking-empty">Nenhum ativo disponível para esta combinação de filtros.</p>}
+          </div>
+          <p className="ranking-method"><strong>Como calculamos:</strong> 40% retorno em 1 mês · 30% menor volatilidade · 20% menor drawdown · 10% retorno em 1 ano. Score relativo de 0 a 100; não constitui recomendação.</p>
+        </section>
 
         <div className="grid">
           <section className="card analysis">
