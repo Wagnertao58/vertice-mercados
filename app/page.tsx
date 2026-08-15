@@ -379,7 +379,7 @@ export default function Home() {
             </table></div> : <div className="correlation-placeholder"><strong>Matriz preparada</strong><span>Será preenchida após a primeira sincronização conjunta de mercado e indicadores macroeconômicos.</span></div>}
             <div className="correlation-legend"><span><i className="negative" /> relação inversa</span><span><i /> neutra</span><span><i className="positive" /> relação positiva</span><em>{macroData?.correlation.method ?? "Retornos dos ativos e variações dos indicadores serão alinhados por mês."}</em></div>
           </div>
-          <p className="macro-source"><strong>Fontes:</strong> Banco Central do Brasil (SGS) e Federal Reserve Bank of St. Louis (FRED). Séries sujeitas a revisão; correlação não implica causalidade.</p>
+          <p className="macro-source"><strong>Fontes:</strong> Banco Central do Brasil (SGS), Federal Reserve Bank of New York, BLS, U.S. Treasury e Federal Reserve Board. Séries sujeitas a revisão; correlação não implica causalidade.</p>
         </section>
 
         <section className="card ranking-card">

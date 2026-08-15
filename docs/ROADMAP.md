@@ -21,7 +21,7 @@ Este documento mantém a evolução do Vértice independente de qualquer convers
 ### Primeiro bloco implementado
 
 - Brasil: Selic, CDI, IPCA e IGP-M por séries oficiais do Banco Central.
-- Estados Unidos: Fed Funds, CPI, Treasury de 10 anos e índice amplo do dólar via FRED.
+- Estados Unidos: Fed Funds pelo Federal Reserve Bank of New York, CPI pelo BLS, Treasury de 10 anos pelo U.S. Treasury e índice amplo do dólar pelo Federal Reserve Board.
 - Calendário mensal e normalização de frequências diárias e mensais.
 - Matriz de correlação entre ações, moedas, índices e indicadores.
 

@@ -24,10 +24,10 @@ MACRO_CATALOG: tuple[MacroSeriesDefinition, ...] = (
     MacroSeriesDefinition("BR_CDI", "bcb_sgs", "12", "CDI", "BR", "interest", "% a.a.", "daily", "annualize_daily"),
     MacroSeriesDefinition("BR_IPCA", "bcb_sgs", "433", "IPCA em 12 meses", "BR", "inflation", "% a.a.", "monthly", "compound_12m"),
     MacroSeriesDefinition("BR_IGPM", "bcb_sgs", "189", "IGP-M em 12 meses", "BR", "inflation", "% a.a.", "monthly", "compound_12m"),
-    MacroSeriesDefinition("US_FEDFUNDS", "fred_csv", "FEDFUNDS", "Fed Funds efetiva", "US", "interest", "% a.a.", "monthly"),
-    MacroSeriesDefinition("US_CPI", "fred_csv", "CPIAUCSL", "CPI em 12 meses", "US", "inflation", "% a.a.", "monthly", "pct_change_12m"),
-    MacroSeriesDefinition("US_T10Y", "fred_csv", "DGS10", "Treasury 10 anos", "US", "interest", "% a.a.", "daily"),
-    MacroSeriesDefinition("US_DOLLAR", "fred_csv", "DTWEXBGS", "Dolar amplo", "US", "currency", "indice", "daily"),
+    MacroSeriesDefinition("US_FEDFUNDS", "nyfed_effr", "EFFR", "Fed Funds efetiva", "US", "interest", "% a.a.", "daily"),
+    MacroSeriesDefinition("US_CPI", "bls_public_api", "CUSR0000SA0", "CPI em 12 meses", "US", "inflation", "% a.a.", "monthly", "pct_change_12m"),
+    MacroSeriesDefinition("US_T10Y", "treasury_xml", "BC_10YEAR", "Treasury 10 anos", "US", "interest", "% a.a.", "daily"),
+    MacroSeriesDefinition("US_DOLLAR", "fed_ddp", "JRXWTFB_N.B", "Dolar amplo", "US", "currency", "indice", "daily"),
 )
 
 MACRO_BY_CODE = {series.code: series for series in MACRO_CATALOG}

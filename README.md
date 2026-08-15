@@ -32,7 +32,7 @@ A tela “Saúde dos dados” apresenta cobertura, quantidade de registros e ati
 
 ## Macroeconomia e correlações
 
-A Fase 2 conecta Selic, CDI, IPCA e IGP-M pelo SGS do Banco Central, além de Fed Funds, CPI, Treasury de 10 anos e dólar amplo pelo FRED. O serviço preserva as observações originais, normaliza as frequências por mês e calcula correlações usando retornos mensais dos ativos e variações mensais dos indicadores.
+A Fase 2 conecta Selic, CDI, IPCA e IGP-M pelo SGS do Banco Central. Nos Estados Unidos, usa as fontes oficiais do Federal Reserve Bank of New York (Fed Funds), BLS (CPI), U.S. Treasury (Treasury de 10 anos) e Federal Reserve Board (dólar amplo). O serviço preserva as observações originais, normaliza as frequências por mês e calcula correlações usando retornos mensais dos ativos e variações mensais dos indicadores.
 
 Correlação é uma medida histórica de associação e não representa causalidade nem previsão.
 
