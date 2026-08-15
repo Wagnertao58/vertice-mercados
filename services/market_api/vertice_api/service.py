@@ -13,6 +13,24 @@ class UnknownAssetError(KeyError):
     pass
 
 
+HISTORY_PERIODS: dict[str, tuple[int, str]] = {
+    "1D": (2, "1y"),
+    "5D": (5, "1y"),
+    "1M": (22, "1y"),
+    "6M": (126, "1y"),
+    "1A": (253, "1y"),
+    "5A": (1260, "5y"),
+}
+
+
+def _sample_rows(rows: list[dict[str, object]], max_points: int = 90) -> list[dict[str, object]]:
+    if len(rows) <= max_points:
+        return rows
+    step = (len(rows) - 1) / (max_points - 1)
+    indexes = [round(index * step) for index in range(max_points)]
+    return [rows[index] for index in indexes]
+
+
 class MarketService:
     def __init__(self, db: Database, provider: YahooChartProvider, settings: Settings):
         self.db = db
@@ -43,6 +61,48 @@ class MarketService:
         rows = self.sync(asset.ticker, force=force)
         benchmark_rows = self.sync(asset.benchmark) if asset.benchmark else None
         return {**asset.as_record(), **summarize(rows, benchmark_rows), "provider": self.provider.name}
+
+    def history(self, ticker: str, period: str = "1M", force: bool = False) -> dict[str, object]:
+        asset = self.asset(ticker)
+        normalized_period = period.upper()
+        if normalized_period not in HISTORY_PERIODS:
+            raise ValueError(f"Unsupported period: {period}")
+
+        row_limit, provider_range = HISTORY_PERIODS[normalized_period]
+        stored = self.db.get_prices(asset.ticker, limit=row_limit)
+        latest_fetch = self.db.latest_fetch(asset.ticker)
+        fresh_after = datetime.now(UTC) - timedelta(minutes=self.settings.cache_minutes)
+        needs_extended_history = normalized_period == "5A" and len(stored) < 700
+        if force or len(stored) < min(row_limit, 2) or needs_extended_history or not latest_fetch or latest_fetch < fresh_after:
+            rows = self.provider.history(asset.provider_symbol, range_=provider_range)
+            self.db.upsert_prices(asset.ticker, rows, self.provider.name)
+            stored = self.db.get_prices(asset.ticker, limit=row_limit)
+
+        sampled = _sample_rows(stored)
+        if not sampled:
+            raise ValueError(f"No history available for {asset.ticker}")
+        start = float(sampled[0]["adjusted_close"])
+        points = [
+            {
+                "date": row["price_date"],
+                "close": float(row["close"]),
+                "adjusted_close": float(row["adjusted_close"]),
+                "return_pct": (float(row["adjusted_close"]) / start - 1.0) * 100.0 if start else 0.0,
+                "volume": row.get("volume"),
+            }
+            for row in sampled
+        ]
+        return {
+            "ticker": asset.ticker,
+            "name": asset.name,
+            "market": asset.market,
+            "currency": asset.currency,
+            "period": normalized_period,
+            "as_of": points[-1]["date"],
+            "provider": self.provider.name,
+            "stored_rows": len(stored),
+            "points": points,
+        }
 
     def bdr_parity(self, ticker: str, force: bool = False) -> dict[str, object]:
         bdr = self.asset(ticker)

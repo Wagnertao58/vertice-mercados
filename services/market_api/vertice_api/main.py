@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Vertice Market API",
     description="Daily market data, analytics and BDR parity for the Vertice dashboard.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -66,6 +66,22 @@ def asset_snapshot(ticker: str, refresh: bool = Query(False)) -> dict[str, objec
         return service.snapshot(ticker, force=refresh)
     except UnknownAssetError:
         raise HTTPException(status_code=404, detail=f"Unknown ticker: {ticker.upper()}")
+    except MarketDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/v1/assets/{ticker}/history")
+def asset_history(
+    ticker: str,
+    period: str = Query("1M", pattern="^(1D|5D|1M|6M|1A|5A)$"),
+    refresh: bool = Query(False),
+) -> dict[str, object]:
+    try:
+        return service.history(ticker, period=period, force=refresh)
+    except UnknownAssetError:
+        raise HTTPException(status_code=404, detail=f"Unknown ticker: {ticker.upper()}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except MarketDataError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

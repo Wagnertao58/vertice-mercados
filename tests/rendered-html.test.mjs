@@ -39,6 +39,7 @@ test("server-renders the Vertice dashboard", async () => {
   assert.match(html, /Valorização com menor variância/);
   assert.match(html, /Score relativo/);
   assert.match(html, /40% retorno em 1 mês/);
+  assert.match(html, /Consultando histórico/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
@@ -50,4 +51,13 @@ test("returns a safe fallback while the market API is not configured", async () 
   const payload = await response.json();
   assert.equal(payload.mode, "demo");
   assert.deepEqual(payload.assets, []);
+});
+
+test("returns a safe historical fallback while the market API is not configured", async () => {
+  const worker = await loadWorker("history-api");
+  const response = await worker.fetch(new Request("http://localhost/api/history?ticker=TEAM&period=1M"), {});
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.mode, "demo");
+  assert.deepEqual(payload.points, []);
 });

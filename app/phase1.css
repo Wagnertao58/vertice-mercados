@@ -258,3 +258,38 @@
     min-width: 0;
   }
 }
+
+.history-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid #e1e8e5;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .9);
+  color: #77837f;
+  font-size: 8px;
+  letter-spacing: .25px;
+  backdrop-filter: blur(4px);
+}
+
+.history-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d6a149;
+}
+
+.history-status > span.history-live {
+  background: #20a47e;
+  box-shadow: 0 0 0 3px rgba(32, 164, 126, .12);
+}
+
+.chart .bars b:hover {
+  filter: saturate(1.25);
+  opacity: 1 !important;
+}

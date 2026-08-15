@@ -88,6 +88,23 @@ type ApiAsset = {
   bars: number[]; currency: "USD" | "BRL";
 };
 
+type HistoryPoint = {
+  date: string;
+  close: number;
+  adjusted_close: number;
+  return_pct: number;
+  volume: number | null;
+};
+
+type HistoryMode = "loading" | "live" | "fallback";
+
+function formatHistoryDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
+    .format(new Date(`${value}T12:00:00Z`))
+    .replace(". de ", " ")
+    .toUpperCase();
+}
+
 export default function Home() {
   const [selected, setSelected] = useState("TEAM");
   const [period, setPeriod] = useState("1M");
@@ -99,6 +116,8 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [rankingMarket, setRankingMarket] = useState<MarketFilter>("all");
   const [rankingClass, setRankingClass] = useState<ClassFilter>("stock");
+  const [historyPoints, setHistoryPoints] = useState<HistoryPoint[]>([]);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("loading");
   const loadingRef = useRef(false);
   const watch = assets.slice(0, 5);
   const asset = assets.find((item) => item.ticker === selected) ?? assets[0];
@@ -110,6 +129,21 @@ export default function Home() {
     (rankingMarket === "all" || classifyMarket(item) === rankingMarket) &&
     (rankingClass === "all" || classifyAsset(item) === rankingClass)
   )).slice(0, 8), [assets, rankingClass, rankingMarket]);
+  const chartBars = useMemo(() => {
+    if (historyMode !== "live" || historyPoints.length < 2) {
+      return asset.bars.map((height, index) => ({ height, label: `Ponto ${index + 1}` }));
+    }
+    const closes = historyPoints.map((point) => point.adjusted_close);
+    const low = Math.min(...closes);
+    const high = Math.max(...closes);
+    return historyPoints.map((point) => ({
+      height: high === low ? 55 : Math.round(18 + (point.adjusted_close - low) / (high - low) * 78),
+      label: `${formatHistoryDate(point.date)} · ${asset.currency} ${point.close.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`,
+    }));
+  }, [asset.bars, asset.currency, historyMode, historyPoints]);
+  const chartLabels = historyMode === "live" && historyPoints.length > 1
+    ? [historyPoints[0], historyPoints[Math.floor(historyPoints.length / 2)], historyPoints.at(-1)!].map((point) => formatHistoryDate(point.date))
+    : ["INÍCIO", period, "ATUAL"];
 
   const loadMarketData = useCallback(async (initial = false) => {
     if (loadingRef.current) return;
@@ -149,6 +183,25 @@ export default function Home() {
     const timer = window.setInterval(() => void loadMarketData(), 5 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [loadMarketData]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setHistoryMode("loading");
+    void fetch(`/api/history?ticker=${encodeURIComponent(selected)}&period=${encodeURIComponent(period)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    }).then(async (response) => {
+      const payload = await response.json() as { mode?: string; points?: HistoryPoint[] };
+      if (!response.ok || payload.mode !== "live" || !payload.points?.length) throw new Error("History unavailable");
+      setHistoryPoints(payload.points);
+      setHistoryMode("live");
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setHistoryPoints([]);
+      setHistoryMode("fallback");
+    });
+    return () => controller.abort();
+  }, [period, selected]);
 
   return (
     <main>
@@ -203,12 +256,13 @@ export default function Home() {
         <div className="grid">
           <section className="card analysis">
             <div className="card-head"><div><p className="eyebrow">ANÁLISE PRINCIPAL</p><div className="asset-title"><span style={{background: asset.color}}>{asset.ticker[0]}</span><div><h2>{asset.name}</h2><p>{asset.ticker} · {asset.market}</p></div></div></div><button className="ghost">Adicionar à lista +</button></div>
-            <div className="price-row"><div><strong>{asset.currency} {asset.price.toLocaleString("pt-BR", {minimumFractionDigits:2})}</strong><span className={asset.change >= 0 ? "up pill" : "down pill"}>{asset.change >= 0 ? "↗" : "↘"} {Math.abs(asset.change).toFixed(2)}%</span></div><small>Último fechamento · {dataMode === "live" ? "fonte conectada" : "modo demonstrativo"}</small></div>
+            <div className="price-row"><div><strong>{asset.currency} {asset.price.toLocaleString("pt-BR", {minimumFractionDigits:2})}</strong><span className={asset.change >= 0 ? "up pill" : "down pill"}>{asset.change >= 0 ? "↗" : "↘"} {Math.abs(asset.change).toFixed(2)}%</span></div><small>Último fechamento · {historyMode === "live" ? `${historyPoints.length} pontos armazenados` : historyMode === "loading" ? "carregando histórico" : dataMode === "live" ? "fonte conectada" : "modo demonstrativo"}</small></div>
             <div className="periods">{periods.map(p => <button key={p} onClick={() => setPeriod(p)} className={period === p ? "selected" : ""}>{p}</button>)}</div>
             <div className="chart" aria-label={`Gráfico de ${asset.name} no período ${period}`}>
               <div className="grid-lines"><i/><i/><i/><i/></div>
-              <div className="bars">{asset.bars.map((h,i) => <b key={i} style={{height:`${h}%`, background: asset.color, opacity: .26 + i/30}} />)}</div>
-              <div className="chart-labels"><span>15 JUL</span><span>24 JUL</span><span>02 AGO</span><span>13 AGO</span></div>
+              <div className="bars">{chartBars.map((point,i) => <b key={`${point.label}-${i}`} title={point.label} style={{height:`${point.height}%`, background: asset.color, opacity: .34 + i / Math.max(chartBars.length * 1.8, 1)}} />)}</div>
+              <div className="history-status"><span className={historyMode === "live" ? "history-live" : ""} />{historyMode === "live" ? "Histórico persistido no Supabase" : historyMode === "loading" ? "Consultando histórico…" : "Visualização temporária"}</div>
+              <div className="chart-labels">{chartLabels.map((label) => <span key={label}>{label}</span>)}</div>
             </div>
             <div className="metrics">
               <div><small>RETORNO 1M</small><strong className="up">+{asset.month.toFixed(1)}%</strong></div>
