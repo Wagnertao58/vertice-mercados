@@ -6,6 +6,7 @@ from pathlib import Path
 
 from vertice_api.catalog import CATALOG, CATALOG_BY_TICKER
 from vertice_api.db import Database
+from vertice_api.macro_catalog import MACRO_CATALOG
 
 
 class DatabaseTests(unittest.TestCase):
@@ -34,6 +35,22 @@ class DatabaseTests(unittest.TestCase):
             health = {item["ticker"]: item for item in db.data_health()}
             self.assertEqual(health["TEAM"]["last_sync_status"], "success")
             self.assertEqual(health["TEAM"]["price_rows"], 1)
+
+    def test_macro_catalog_and_observations_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db = Database(Path(directory) / "macro.db")
+            db.initialize()
+            db.seed_macro_series(MACRO_CATALOG)
+            inserted = db.upsert_macro_observations(
+                "BR_SELIC",
+                [{"observation_date": "2026-08-13", "value": 14.9}],
+                "bcb_sgs",
+            )
+
+            self.assertEqual(inserted, 1)
+            self.assertEqual(len(db.list_macro_series()), len(MACRO_CATALOG))
+            self.assertEqual(db.get_macro_observations("BR_SELIC")[0]["value"], 14.9)
+            self.assertIsNotNone(db.latest_macro_fetch("BR_SELIC"))
 
 
 if __name__ == "__main__":

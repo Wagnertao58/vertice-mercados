@@ -10,6 +10,8 @@ Plataforma de inteligência de mercado para acompanhar ações brasileiras e nor
 - Atualização visual a cada 5 minutos.
 - Coleta diária automatizada às 19h30, em dias úteis.
 - Ranking de valorização consistente e consulta histórica de 1 dia a 5 anos.
+- Indicadores macroeconômicos oficiais do Brasil e dos Estados Unidos.
+- Matriz de correlação mensal entre mercado, juros, inflação e câmbio.
 
 ## Estrutura
 
@@ -27,6 +29,12 @@ O GitHub Actions chama a rota protegida da API de segunda a sexta-feira. A mesma
 2. GitHub: segredo do repositório `VERTICE_SYNC_API_KEY`.
 
 A tela “Saúde dos dados” apresenta cobertura, quantidade de registros e ativos atrasados, ausentes ou com falha.
+
+## Macroeconomia e correlações
+
+A Fase 2 conecta Selic, CDI, IPCA e IGP-M pelo SGS do Banco Central, além de Fed Funds, CPI, Treasury de 10 anos e dólar amplo pelo FRED. O serviço preserva as observações originais, normaliza as frequências por mês e calcula correlações usando retornos mensais dos ativos e variações mensais dos indicadores.
+
+Correlação é uma medida histórica de associação e não representa causalidade nem previsão.
 
 ## Desenvolvimento local
 

@@ -12,19 +12,22 @@ Este documento mantém a evolução do Vértice independente de qualquer convers
 - Métricas de retorno, volatilidade, beta e drawdown.
 - Ranking relativo de valorização com menor variância.
 - Paridade teórica de BDRs.
-
-### Em ativação
-
 - Coleta automática em dias úteis.
 - Registro de sucesso e falha por ativo.
 - Monitor de cobertura e saúde dos dados.
 
 ## Fase 2 — Macroeconomia e correlações
 
-- Brasil: Selic, CDI, IPCA, IGP-M e curva de juros.
-- Estados Unidos: Fed Funds, CPI, Treasury yields e dólar.
-- Calendário e normalização de frequências diferentes.
-- Matriz de correlação entre ativos, moedas, índices e indicadores.
+### Primeiro bloco implementado
+
+- Brasil: Selic, CDI, IPCA e IGP-M por séries oficiais do Banco Central.
+- Estados Unidos: Fed Funds, CPI, Treasury de 10 anos e índice amplo do dólar via FRED.
+- Calendário mensal e normalização de frequências diárias e mensais.
+- Matriz de correlação entre ações, moedas, índices e indicadores.
+
+### Próximo bloco
+
+- Curva de juros brasileira com fonte estável e documentada.
 - Correlação móvel e análise de defasagens.
 
 ## Fase 3 — Pesquisa quantitativa

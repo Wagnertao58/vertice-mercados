@@ -42,6 +42,10 @@ test("server-renders the Vertice dashboard", async () => {
   assert.match(html, /Consultando histórico/);
   assert.match(html, /SAÚDE DOS DADOS/);
   assert.match(html, /Coleta e cobertura histórica/);
+  assert.match(html, /FASE 2 · MACROECONOMIA/);
+  assert.match(html, /Pulso monetário e inflação/);
+  assert.match(html, /MATRIZ DE CORRELAÇÃO/);
+  assert.match(html, /Banco Central do Brasil \(SGS\)/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
@@ -70,4 +74,14 @@ test("returns a safe data-health fallback while the market API is not configured
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.mode, "demo");
+});
+
+test("returns a safe macro fallback while the market API is not configured", async () => {
+  const worker = await loadWorker("macro-api");
+  const response = await worker.fetch(new Request("http://localhost/api/macro"), {});
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.mode, "demo");
+  assert.deepEqual(payload.series, []);
+  assert.deepEqual(payload.correlation.labels, []);
 });

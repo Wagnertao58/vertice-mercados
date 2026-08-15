@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Iterator, Protocol
 
 from .catalog import AssetDefinition
+from .macro_catalog import MacroSeriesDefinition
 
 
 SQLITE_SCHEMA = (
@@ -53,6 +54,34 @@ SQLITE_SCHEMA = (
         rows_received INTEGER NOT NULL DEFAULT 0,
         error_message TEXT
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS macro_series (
+        code TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        provider_code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        country TEXT NOT NULL,
+        category TEXT NOT NULL,
+        unit TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        transform TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS macro_observations (
+        series_code TEXT NOT NULL REFERENCES macro_series(code),
+        observation_date TEXT NOT NULL,
+        value REAL NOT NULL,
+        provider TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (series_code, observation_date)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_macro_observations_code_date
+    ON macro_observations(series_code, observation_date DESC)
     """,
 )
 
@@ -101,6 +130,34 @@ POSTGRES_SCHEMA = (
         error_message TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS macro_series (
+        code TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        provider_code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        country TEXT NOT NULL,
+        category TEXT NOT NULL,
+        unit TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        transform TEXT NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS macro_observations (
+        series_code TEXT NOT NULL REFERENCES macro_series(code),
+        observation_date TEXT NOT NULL,
+        value DOUBLE PRECISION NOT NULL,
+        provider TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (series_code, observation_date)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_macro_observations_code_date
+    ON macro_observations(series_code, observation_date DESC)
+    """,
 )
 
 
@@ -109,10 +166,15 @@ class _Backend(Protocol):
 
     def initialize(self) -> None: ...
     def seed_assets(self, assets: Iterable[AssetDefinition]) -> None: ...
+    def seed_macro_series(self, series: Iterable[MacroSeriesDefinition]) -> None: ...
     def list_assets(self, asset_class: str | None = None) -> list[dict[str, object]]: ...
+    def list_macro_series(self) -> list[dict[str, object]]: ...
     def upsert_prices(self, ticker: str, rows: Iterable[dict[str, object]], provider: str) -> int: ...
+    def upsert_macro_observations(self, code: str, rows: Iterable[dict[str, object]], provider: str) -> int: ...
     def get_prices(self, ticker: str, limit: int = 260) -> list[dict[str, object]]: ...
+    def get_macro_observations(self, code: str, limit: int = 2000) -> list[dict[str, object]]: ...
     def latest_fetch(self, ticker: str) -> datetime | None: ...
+    def latest_macro_fetch(self, code: str) -> datetime | None: ...
     def create_sync_run(self, ticker: str) -> int: ...
     def finish_sync_run(self, run_id: int, status: str, rows_received: int, error_message: str | None = None) -> None: ...
     def data_health(self) -> list[dict[str, object]]: ...
@@ -166,6 +228,21 @@ class _SqliteBackend:
         with self.connection() as conn:
             conn.executemany(sql, [asset.as_record() for asset in assets])
 
+    def seed_macro_series(self, series: Iterable[MacroSeriesDefinition]) -> None:
+        sql = """
+        INSERT INTO macro_series (
+            code, provider, provider_code, name, country, category, unit, frequency, transform
+        ) VALUES (
+            :code, :provider, :provider_code, :name, :country, :category, :unit, :frequency, :transform
+        )
+        ON CONFLICT(code) DO UPDATE SET
+            provider=excluded.provider, provider_code=excluded.provider_code,
+            name=excluded.name, country=excluded.country, category=excluded.category,
+            unit=excluded.unit, frequency=excluded.frequency, transform=excluded.transform, active=1
+        """
+        with self.connection() as conn:
+            conn.executemany(sql, [item.as_record() for item in series])
+
     def list_assets(self, asset_class: str | None = None) -> list[dict[str, object]]:
         query = "SELECT * FROM assets WHERE active=1"
         params: tuple[object, ...] = ()
@@ -175,6 +252,12 @@ class _SqliteBackend:
         query += " ORDER BY asset_class, ticker"
         with self.connection() as conn:
             return [dict(row) for row in conn.execute(query, params).fetchall()]
+
+    def list_macro_series(self) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            return [dict(row) for row in conn.execute(
+                "SELECT * FROM macro_series WHERE active=1 ORDER BY country, category, code"
+            ).fetchall()]
 
     def upsert_prices(self, ticker: str, rows: Iterable[dict[str, object]], provider: str) -> int:
         now = datetime.now(UTC).isoformat()
@@ -197,6 +280,19 @@ class _SqliteBackend:
             conn.executemany(sql, payload)
         return len(payload)
 
+    def upsert_macro_observations(self, code: str, rows: Iterable[dict[str, object]], provider: str) -> int:
+        now = datetime.now(UTC).isoformat()
+        payload = [{**row, "series_code": code, "provider": provider, "fetched_at": now} for row in rows]
+        sql = """
+        INSERT INTO macro_observations (series_code, observation_date, value, provider, fetched_at)
+        VALUES (:series_code, :observation_date, :value, :provider, :fetched_at)
+        ON CONFLICT(series_code, observation_date) DO UPDATE SET
+            value=excluded.value, provider=excluded.provider, fetched_at=excluded.fetched_at
+        """
+        with self.connection() as conn:
+            conn.executemany(sql, payload)
+        return len(payload)
+
     def get_prices(self, ticker: str, limit: int = 260) -> list[dict[str, object]]:
         with self.connection() as conn:
             rows = conn.execute(
@@ -206,11 +302,29 @@ class _SqliteBackend:
             ).fetchall()
         return [dict(row) for row in reversed(rows)]
 
+    def get_macro_observations(self, code: str, limit: int = 2000) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT * FROM macro_observations WHERE series_code=?
+                ORDER BY observation_date DESC LIMIT ?""",
+                (code, limit),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
     def latest_fetch(self, ticker: str) -> datetime | None:
         with self.connection() as conn:
             row = conn.execute(
                 "SELECT MAX(fetched_at) AS fetched_at FROM daily_prices WHERE ticker=?",
                 (ticker,),
+            ).fetchone()
+        value = row["fetched_at"] if row else None
+        return datetime.fromisoformat(value) if value else None
+
+    def latest_macro_fetch(self, code: str) -> datetime | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT MAX(fetched_at) AS fetched_at FROM macro_observations WHERE series_code=?",
+                (code,),
             ).fetchone()
         value = row["fetched_at"] if row else None
         return datetime.fromisoformat(value) if value else None
@@ -317,6 +431,23 @@ class _PostgresBackend:
             with conn.cursor() as cursor:
                 cursor.executemany(sql, [asset.as_record() for asset in assets])
 
+    def seed_macro_series(self, series: Iterable[MacroSeriesDefinition]) -> None:
+        sql = """
+        INSERT INTO macro_series (
+            code, provider, provider_code, name, country, category, unit, frequency, transform
+        ) VALUES (
+            %(code)s, %(provider)s, %(provider_code)s, %(name)s, %(country)s,
+            %(category)s, %(unit)s, %(frequency)s, %(transform)s
+        )
+        ON CONFLICT(code) DO UPDATE SET
+            provider=excluded.provider, provider_code=excluded.provider_code,
+            name=excluded.name, country=excluded.country, category=excluded.category,
+            unit=excluded.unit, frequency=excluded.frequency, transform=excluded.transform, active=TRUE
+        """
+        with self.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.executemany(sql, [item.as_record() for item in series])
+
     def list_assets(self, asset_class: str | None = None) -> list[dict[str, object]]:
         query = "SELECT * FROM assets WHERE active=TRUE"
         params: tuple[object, ...] = ()
@@ -326,6 +457,12 @@ class _PostgresBackend:
         query += " ORDER BY asset_class, ticker"
         with self.connection() as conn:
             return list(conn.execute(query, params).fetchall())
+
+    def list_macro_series(self) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            return list(conn.execute(
+                "SELECT * FROM macro_series WHERE active=TRUE ORDER BY country, category, code"
+            ).fetchall())
 
     def upsert_prices(self, ticker: str, rows: Iterable[dict[str, object]], provider: str) -> int:
         now = datetime.now(UTC).isoformat()
@@ -349,6 +486,20 @@ class _PostgresBackend:
                 cursor.executemany(sql, payload)
         return len(payload)
 
+    def upsert_macro_observations(self, code: str, rows: Iterable[dict[str, object]], provider: str) -> int:
+        now = datetime.now(UTC).isoformat()
+        payload = [{**row, "series_code": code, "provider": provider, "fetched_at": now} for row in rows]
+        sql = """
+        INSERT INTO macro_observations (series_code, observation_date, value, provider, fetched_at)
+        VALUES (%(series_code)s, %(observation_date)s, %(value)s, %(provider)s, %(fetched_at)s)
+        ON CONFLICT(series_code, observation_date) DO UPDATE SET
+            value=excluded.value, provider=excluded.provider, fetched_at=excluded.fetched_at
+        """
+        with self.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.executemany(sql, payload)
+        return len(payload)
+
     def get_prices(self, ticker: str, limit: int = 260) -> list[dict[str, object]]:
         with self.connection() as conn:
             rows = conn.execute(
@@ -358,11 +509,29 @@ class _PostgresBackend:
             ).fetchall()
         return list(reversed(rows))
 
+    def get_macro_observations(self, code: str, limit: int = 2000) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT * FROM macro_observations WHERE series_code=%s
+                ORDER BY observation_date DESC LIMIT %s""",
+                (code, limit),
+            ).fetchall()
+        return list(reversed(rows))
+
     def latest_fetch(self, ticker: str) -> datetime | None:
         with self.connection() as conn:
             row = conn.execute(
                 "SELECT MAX(fetched_at) AS fetched_at FROM daily_prices WHERE ticker=%s",
                 (ticker,),
+            ).fetchone()
+        value = row["fetched_at"] if row else None
+        return datetime.fromisoformat(value) if value else None
+
+    def latest_macro_fetch(self, code: str) -> datetime | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT MAX(fetched_at) AS fetched_at FROM macro_observations WHERE series_code=%s",
+                (code,),
             ).fetchone()
         value = row["fetched_at"] if row else None
         return datetime.fromisoformat(value) if value else None
@@ -442,17 +611,32 @@ class Database:
     def seed_assets(self, assets: Iterable[AssetDefinition]) -> None:
         self._backend.seed_assets(assets)
 
+    def seed_macro_series(self, series: Iterable[MacroSeriesDefinition]) -> None:
+        self._backend.seed_macro_series(series)
+
     def list_assets(self, asset_class: str | None = None) -> list[dict[str, object]]:
         return self._backend.list_assets(asset_class)
+
+    def list_macro_series(self) -> list[dict[str, object]]:
+        return self._backend.list_macro_series()
 
     def upsert_prices(self, ticker: str, rows: Iterable[dict[str, object]], provider: str) -> int:
         return self._backend.upsert_prices(ticker, rows, provider)
 
+    def upsert_macro_observations(self, code: str, rows: Iterable[dict[str, object]], provider: str) -> int:
+        return self._backend.upsert_macro_observations(code, rows, provider)
+
     def get_prices(self, ticker: str, limit: int = 260) -> list[dict[str, object]]:
         return self._backend.get_prices(ticker, limit)
 
+    def get_macro_observations(self, code: str, limit: int = 2000) -> list[dict[str, object]]:
+        return self._backend.get_macro_observations(code, limit)
+
     def latest_fetch(self, ticker: str) -> datetime | None:
         return self._backend.latest_fetch(ticker)
+
+    def latest_macro_fetch(self, code: str) -> datetime | None:
+        return self._backend.latest_macro_fetch(code)
 
     def create_sync_run(self, ticker: str) -> int:
         return self._backend.create_sync_run(ticker)

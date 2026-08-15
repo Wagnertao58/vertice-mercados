@@ -5,7 +5,10 @@ from datetime import UTC, datetime, timedelta
 from .analytics import summarize
 from .catalog import CATALOG_BY_TICKER, AssetDefinition
 from .config import Settings
+from .correlations import changes, correlation_matrix, month_end_values
 from .db import Database
+from .macro_catalog import MACRO_BY_CODE, MACRO_CATALOG, MacroSeriesDefinition
+from .providers.macro_official import MacroDataError, OfficialMacroProvider
 from .providers.yahoo_chart import YahooChartProvider
 
 
@@ -32,10 +35,17 @@ def _sample_rows(rows: list[dict[str, object]], max_points: int = 90) -> list[di
 
 
 class MarketService:
-    def __init__(self, db: Database, provider: YahooChartProvider, settings: Settings):
+    def __init__(
+        self,
+        db: Database,
+        provider: YahooChartProvider,
+        settings: Settings,
+        macro_provider: OfficialMacroProvider | None = None,
+    ):
         self.db = db
         self.provider = provider
         self.settings = settings
+        self.macro_provider = macro_provider or OfficialMacroProvider(settings.request_timeout_seconds)
 
     def asset(self, ticker: str) -> AssetDefinition:
         normalized = ticker.upper()
@@ -135,6 +145,141 @@ class MarketService:
             "assets_succeeded": succeeded,
             "assets_failed": failed,
             "results": results,
+        }
+
+    @staticmethod
+    def _transform_macro(
+        definition: MacroSeriesDefinition,
+        rows: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        values = [float(row["value"]) for row in rows]
+        transformed: list[dict[str, object]] = []
+        for index, row in enumerate(rows):
+            value: float | None
+            if definition.transform == "annualize_daily":
+                value = ((1.0 + values[index] / 100.0) ** 252 - 1.0) * 100.0
+            elif definition.transform == "compound_12m":
+                if index < 11:
+                    continue
+                accumulated = 1.0
+                for monthly_value in values[index - 11:index + 1]:
+                    accumulated *= 1.0 + monthly_value / 100.0
+                value = (accumulated - 1.0) * 100.0
+            elif definition.transform == "pct_change_12m":
+                if index < 12 or values[index - 12] == 0:
+                    continue
+                value = (values[index] / values[index - 12] - 1.0) * 100.0
+            else:
+                value = values[index]
+            transformed.append({"observation_date": row["observation_date"], "value": round(value, 6)})
+        return transformed
+
+    def sync_macro(self, code: str, force: bool = False) -> list[dict[str, object]]:
+        normalized = code.upper()
+        try:
+            definition = MACRO_BY_CODE[normalized]
+        except KeyError as exc:
+            raise ValueError(f"Unknown macro series: {normalized}") from exc
+        latest_fetch = self.db.latest_macro_fetch(normalized)
+        fresh_after = datetime.now(UTC) - timedelta(hours=6)
+        stored = self.db.get_macro_observations(normalized)
+        minimum_rows = 13 if definition.transform in {"compound_12m", "pct_change_12m"} else 2
+        if force or len(stored) < minimum_rows or not latest_fetch or latest_fetch < fresh_after:
+            rows = self.macro_provider.history(definition)
+            self.db.upsert_macro_observations(normalized, rows, definition.provider)
+            stored = self.db.get_macro_observations(normalized)
+        return stored
+
+    def run_macro_sync(self) -> dict[str, object]:
+        started_at = datetime.now(UTC)
+        results: list[dict[str, object]] = []
+        for definition in MACRO_CATALOG:
+            run_id = self.db.create_sync_run(definition.code)
+            try:
+                rows = self.macro_provider.history(definition)
+                rows_received = self.db.upsert_macro_observations(definition.code, rows, definition.provider)
+                self.db.finish_sync_run(run_id, "success", rows_received)
+                results.append({"code": definition.code, "status": "success", "rows_received": rows_received})
+            except Exception as exc:
+                message = str(exc)[:500]
+                self.db.finish_sync_run(run_id, "failed", 0, message)
+                results.append({"code": definition.code, "status": "failed", "rows_received": 0, "error": message})
+        succeeded = sum(item["status"] == "success" for item in results)
+        failed = len(results) - succeeded
+        return {
+            "status": "ok" if failed == 0 else "partial" if succeeded else "failed",
+            "started_at": started_at.isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "series_requested": len(results),
+            "series_succeeded": succeeded,
+            "series_failed": failed,
+            "results": results,
+        }
+
+    def run_full_scheduled_sync(self) -> dict[str, object]:
+        market = self.run_scheduled_sync()
+        macro = self.run_macro_sync()
+        statuses = {str(market["status"]), str(macro["status"])}
+        status = "ok" if statuses == {"ok"} else "failed" if statuses == {"failed"} else "partial"
+        return {
+            "status": status,
+            "started_at": market["started_at"],
+            "finished_at": datetime.now(UTC).isoformat(),
+            "market": market,
+            "macro": macro,
+        }
+
+    def macro_dashboard(self, months: int = 24) -> dict[str, object]:
+        months = max(12, min(months, 60))
+        transformed_by_code: dict[str, list[dict[str, object]]] = {}
+        items: list[dict[str, object]] = []
+        errors: list[dict[str, str]] = []
+        for definition in MACRO_CATALOG:
+            try:
+                stored = self.sync_macro(definition.code)
+            except (MacroDataError, ValueError) as exc:
+                stored = self.db.get_macro_observations(definition.code)
+                errors.append({"code": definition.code, "error": str(exc)})
+            transformed = self._transform_macro(definition, stored)
+            transformed_by_code[definition.code] = transformed
+            monthly = month_end_values(transformed, "value")
+            points = list(monthly.items())[-months:]
+            if not points:
+                continue
+            latest_value = points[-1][1]
+            previous_value = points[-2][1] if len(points) > 1 else latest_value
+            items.append({
+                **definition.as_record(),
+                "latest_value": round(latest_value, 3),
+                "previous_value": round(previous_value, 3),
+                "change": round(latest_value - previous_value, 3),
+                "as_of": points[-1][0],
+                "points": [{"date": month, "value": round(value, 3)} for month, value in points],
+            })
+
+        matrix_inputs: dict[str, dict[str, float]] = {}
+        names: dict[str, str] = {}
+        for ticker in ("IBOV", "SP500", "NASDAQ", "USD-BRL"):
+            rows = self.db.get_prices(ticker, limit=1260)
+            monthly = month_end_values(rows, "adjusted_close")
+            matrix_inputs[ticker] = dict(list(changes(monthly, percent=True).items())[-months:])
+            names[ticker] = CATALOG_BY_TICKER[ticker].name
+        for code in ("BR_SELIC", "BR_IPCA", "US_FEDFUNDS", "US_CPI"):
+            definition = MACRO_BY_CODE[code]
+            monthly = month_end_values(transformed_by_code.get(code, []), "value")
+            matrix_inputs[code] = dict(list(changes(monthly, percent=False).items())[-months:])
+            names[code] = definition.name
+
+        matrix = correlation_matrix(matrix_inputs)
+        matrix["names"] = names
+        matrix["method"] = "Retornos mensais para ativos e variações mensais para juros e inflação."
+        matrix["period_months"] = months
+        return {
+            "status": "live" if items else "unavailable",
+            "as_of": datetime.now(UTC).isoformat(),
+            "series": items,
+            "correlation": matrix,
+            "errors": errors,
         }
 
     def data_health(self) -> dict[str, object]:

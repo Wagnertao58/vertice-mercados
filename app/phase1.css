@@ -259,6 +259,287 @@
   }
 }
 
+.phase-two-nav {
+  color: #b4d9d1;
+}
+
+.macro-card {
+  margin-bottom: 18px;
+  padding: 20px;
+  scroll-margin-top: 18px;
+}
+
+.macro-head,
+.correlation-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.macro-head h3,
+.correlation-head h3 {
+  font-size: 20px;
+}
+
+.macro-head > div > p:last-child {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.macro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #eadfca;
+  border-radius: 999px;
+  background: #fffaf0;
+  color: #946c25;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.macro-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d49a35;
+}
+
+.macro-badge.live {
+  border-color: #cce8de;
+  background: #eff9f5;
+  color: #157a61;
+}
+
+.macro-badge.live i {
+  background: #20a47e;
+  box-shadow: 0 0 0 3px rgba(32, 164, 126, .12);
+}
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.macro-indicator {
+  min-width: 0;
+  padding: 13px 14px 11px;
+  border: 1px solid #e7ecea;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #fff, #f8faf9);
+}
+
+.macro-indicator-head {
+  display: flex;
+  justify-content: space-between;
+  color: #7d8986;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.macro-indicator-head span {
+  color: var(--green);
+}
+
+.macro-indicator-head em {
+  font-style: normal;
+}
+
+.macro-indicator h4 {
+  margin: 8px 0 6px;
+  overflow: hidden;
+  color: #394643;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.macro-value strong {
+  font: 21px Georgia;
+}
+
+.macro-value small {
+  font-size: 8px;
+}
+
+.macro-spark {
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  height: 38px;
+  margin: 10px 0 6px;
+  border-bottom: 1px solid #e4ebe8;
+}
+
+.macro-spark i {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(#55ae99, #b8d9d1);
+  opacity: .82;
+}
+
+.macro-date {
+  color: #909a97;
+  font-size: 7px;
+}
+
+.correlation-panel {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 18px;
+}
+
+.correlation-head {
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.correlation-head > span {
+  color: #7e8986;
+  font-size: 8px;
+}
+
+.correlation-scroll {
+  overflow-x: auto;
+}
+
+.correlation-panel table {
+  width: 100%;
+  min-width: 760px;
+  border-spacing: 3px;
+}
+
+.correlation-panel th,
+.correlation-panel td {
+  height: 30px;
+  border-radius: 5px;
+  font-size: 8px;
+  text-align: center;
+}
+
+.correlation-panel thead th,
+.correlation-panel tbody th {
+  color: #6f7b78;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+
+.correlation-panel thead th:first-child,
+.correlation-panel tbody th {
+  min-width: 74px;
+  text-align: left;
+}
+
+.correlation-panel td {
+  color: #25322f;
+  font-weight: 700;
+}
+
+.correlation-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px dashed #dbe4e1;
+  border-radius: 9px;
+  background: #f8faf9;
+}
+
+.correlation-placeholder strong {
+  color: var(--green);
+  font: 15px Georgia;
+}
+
+.correlation-placeholder span {
+  color: #7e8a87;
+  font-size: 9px;
+}
+
+.correlation-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 9px;
+  color: #7d8986;
+  font-size: 7px;
+}
+
+.correlation-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.correlation-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: #eef1f0;
+}
+
+.correlation-legend i.negative {
+  background: rgba(200, 77, 77, .55);
+}
+
+.correlation-legend i.positive {
+  background: rgba(13, 128, 104, .55);
+}
+
+.correlation-legend em {
+  margin-left: auto;
+  font-style: normal;
+}
+
+.macro-source {
+  margin: 12px 0 0;
+  color: #7f8b88;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .macro-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .macro-card {
+    padding: 15px;
+  }
+
+  .macro-head,
+  .correlation-head,
+  .correlation-legend {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .macro-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .correlation-legend em {
+    margin-left: 0;
+  }
+}
+
 .history-status {
   position: absolute;
   top: 8px;

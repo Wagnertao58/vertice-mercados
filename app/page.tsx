@@ -120,6 +120,58 @@ type DataHealth = {
   items: DataHealthItem[];
 };
 
+type MacroSeries = {
+  code: string;
+  name: string;
+  country: "BR" | "US";
+  category: "interest" | "inflation" | "currency";
+  unit: string;
+  frequency: "daily" | "monthly";
+  latest_value: number | null;
+  previous_value: number | null;
+  change: number | null;
+  as_of: string | null;
+  points: { date: string; value: number }[];
+};
+
+type CorrelationCell = { row: string; column: string; value: number | null; observations: number };
+
+type MacroDashboard = {
+  mode?: string;
+  status?: string;
+  as_of?: string;
+  series: MacroSeries[];
+  correlation: {
+    labels: string[];
+    names?: Record<string, string>;
+    cells: CorrelationCell[];
+    method?: string;
+    period_months?: number;
+  };
+};
+
+const demoMacroSeries: MacroSeries[] = [
+  { code: "BR_SELIC", name: "Selic efetiva", country: "BR", category: "interest", unit: "% a.a.", frequency: "daily", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "BR_CDI", name: "CDI", country: "BR", category: "interest", unit: "% a.a.", frequency: "daily", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "BR_IPCA", name: "IPCA em 12 meses", country: "BR", category: "inflation", unit: "% a.a.", frequency: "monthly", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "BR_IGPM", name: "IGP-M em 12 meses", country: "BR", category: "inflation", unit: "% a.a.", frequency: "monthly", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "US_FEDFUNDS", name: "Fed Funds efetiva", country: "US", category: "interest", unit: "% a.a.", frequency: "monthly", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "US_CPI", name: "CPI em 12 meses", country: "US", category: "inflation", unit: "% a.a.", frequency: "monthly", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "US_T10Y", name: "Treasury 10 anos", country: "US", category: "interest", unit: "% a.a.", frequency: "daily", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+  { code: "US_DOLLAR", name: "Dólar amplo", country: "US", category: "currency", unit: "índice", frequency: "daily", latest_value: null, previous_value: null, change: null, as_of: null, points: [] },
+];
+
+function formatMacroValue(item: MacroSeries) {
+  if (item.latest_value === null) return "—";
+  return item.unit.startsWith("%") ? `${item.latest_value.toFixed(2)}%` : item.latest_value.toFixed(2);
+}
+
+function correlationBackground(value: number | null) {
+  if (value === null) return "#f2f4f3";
+  const alpha = .10 + Math.abs(value) * .55;
+  return value >= 0 ? `rgba(13, 128, 104, ${alpha})` : `rgba(200, 77, 77, ${alpha})`;
+}
+
 function formatHistoryDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
     .format(new Date(`${value}T12:00:00Z`))
@@ -141,6 +193,8 @@ export default function Home() {
   const [historyPoints, setHistoryPoints] = useState<HistoryPoint[]>([]);
   const [historyMode, setHistoryMode] = useState<HistoryMode>("loading");
   const [dataHealth, setDataHealth] = useState<DataHealth | null>(null);
+  const [macroData, setMacroData] = useState<MacroDashboard | null>(null);
+  const [macroMode, setMacroMode] = useState<"loading" | "live" | "unavailable">("loading");
   const loadingRef = useRef(false);
   const watch = assets.slice(0, 5);
   const asset = assets.find((item) => item.ticker === selected) ?? assets[0];
@@ -167,6 +221,10 @@ export default function Home() {
   const chartLabels = historyMode === "live" && historyPoints.length > 1
     ? [historyPoints[0], historyPoints[Math.floor(historyPoints.length / 2)], historyPoints.at(-1)!].map((point) => formatHistoryDate(point.date))
     : ["INÍCIO", period, "ATUAL"];
+  const macroSeries = macroData?.series?.length ? macroData.series : demoMacroSeries;
+  const correlationLookup = useMemo(() => new Map(
+    (macroData?.correlation.cells ?? []).map((cell) => [`${cell.row}:${cell.column}`, cell]),
+  ), [macroData]);
 
   const loadMarketData = useCallback(async (initial = false) => {
     if (loadingRef.current) return;
@@ -212,6 +270,19 @@ export default function Home() {
     }
   }, []);
 
+  const loadMacroData = useCallback(async () => {
+    try {
+      const response = await fetch("/api/macro", { cache: "no-store" });
+      const payload = await response.json() as MacroDashboard;
+      if (!response.ok || payload.mode !== "live" || !payload.series?.length) throw new Error("Macro data unavailable");
+      setMacroData(payload);
+      setMacroMode("live");
+    } catch {
+      setMacroData(null);
+      setMacroMode("unavailable");
+    }
+  }, []);
+
   useEffect(() => {
     void loadMarketData(true);
     const timer = window.setInterval(() => void loadMarketData(), 5 * 60 * 1000);
@@ -223,6 +294,12 @@ export default function Home() {
     const timer = window.setInterval(() => void loadDataHealth(), 5 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [loadDataHealth]);
+
+  useEffect(() => {
+    void loadMacroData();
+    const timer = window.setInterval(() => void loadMacroData(), 30 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [loadMacroData]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -252,9 +329,10 @@ export default function Home() {
           <button className="nav"><span>⌁</span> Análise de ativo</button>
           <button className="nav"><span>⇄</span> Comparador</button>
           <button className="nav"><span>◇</span> BDRs & spreads</button>
-          <button className="nav"><span>⌗</span> Correlações</button>
+          <button className="nav phase-two-nav" onClick={() => document.getElementById("macroeconomia")?.scrollIntoView({ behavior: "smooth" })}><span>◎</span> Macroeconomia</button>
+          <button className="nav" onClick={() => document.getElementById("correlacoes")?.scrollIntoView({ behavior: "smooth" })}><span>⌗</span> Correlações</button>
         </nav>
-        <div className="phase"><small>FASE 1</small><strong>Mercado & risco</strong><div><i /></div><span>Dados multiativos conectados</span></div>
+        <div className="phase"><small>FASE 2</small><strong>Macro & correlações</strong><div><i style={{width: "55%"}} /></div><span>Fontes oficiais em integração</span></div>
         <div className="source-note"><span className={`dot ${dataMode === "live" ? "online" : ""}`} /> {dataMode === "live" ? isRefreshing ? "Atualizando dados" : "Dados conectados" : dataMode === "loading" ? "Conectando dados" : "Dados demonstrativos"}<br/><small>{dataMode === "live" ? `API ativa${updatedAt ? ` · consulta ${updatedAt}` : ""}` : "Conector Python preparado"}</small></div>
       </aside>
 
@@ -267,6 +345,42 @@ export default function Home() {
         <div className="ticker-strip">
           {strip.map((item) => <div key={item.ticker}><small>{item.ticker === "SP500" ? "S&P 500" : item.ticker === "USD-BRL" ? "USD/BRL" : item.ticker}</small><strong>{item.currency}{item.currency ? " " : ""}{item.price.toLocaleString("pt-BR", { minimumFractionDigits: item.ticker === "USD-BRL" ? 4 : item.price >= 1000 ? 0 : 2, maximumFractionDigits: item.ticker === "USD-BRL" ? 4 : item.price >= 1000 ? 0 : 2 })}</strong><em className={item.change >= 0 ? "up" : "down"}>{item.change >= 0 ? "+" : ""}{item.change.toFixed(2)}%</em></div>)}
         </div>
+
+        <section id="macroeconomia" className="card macro-card">
+          <div className="macro-head">
+            <div><p className="eyebrow">FASE 2 · MACROECONOMIA</p><h3>Pulso monetário e inflação</h3><p>Brasil e Estados Unidos normalizados em uma mesma leitura temporal.</p></div>
+            <span className={`macro-badge ${macroMode === "live" ? "live" : ""}`}><i />{macroMode === "live" ? "Fontes oficiais conectadas" : macroMode === "loading" ? "Conectando indicadores" : "Aguardando primeira coleta"}</span>
+          </div>
+          <div className="macro-grid">
+            {macroSeries.map((item) => {
+              const heights = item.points.slice(-12).map((point) => point.value);
+              const low = heights.length ? Math.min(...heights) : 0;
+              const high = heights.length ? Math.max(...heights) : 1;
+              return <article key={item.code} className="macro-indicator">
+                <div className="macro-indicator-head"><span>{item.country === "BR" ? "BRASIL" : "EUA"}</span><em>{item.frequency === "daily" ? "DIÁRIO" : "MENSAL"}</em></div>
+                <h4>{item.name}</h4>
+                <div className="macro-value"><strong>{formatMacroValue(item)}</strong><small className={(item.change ?? 0) >= 0 ? "up" : "down"}>{item.change === null ? "sem leitura" : `${item.change >= 0 ? "+" : ""}${item.change.toFixed(2)} p.p.`}</small></div>
+                <div className="macro-spark" aria-label={`Evolução de ${item.name}`}>
+                  {(heights.length ? heights : Array.from({length: 12}, (_, index) => index + 1)).map((value, index) => <i key={`${item.code}-${index}`} style={{height: `${heights.length ? 18 + (value - low) / Math.max(high - low, .0001) * 76 : 24 + index * 3}%`}} />)}
+                </div>
+                <small className="macro-date">{item.as_of ? `Referência ${item.as_of}` : "Coleta oficial pendente"}</small>
+              </article>;
+            })}
+          </div>
+
+          <div id="correlacoes" className="correlation-panel">
+            <div className="correlation-head"><div><p className="eyebrow">MATRIZ DE CORRELAÇÃO</p><h3>Ativos versus cenário macro</h3></div><span>{macroData?.correlation.period_months ?? 24} meses · frequência mensal</span></div>
+            {macroData?.correlation.labels.length ? <div className="correlation-scroll"><table>
+              <thead><tr><th>Variável</th>{macroData.correlation.labels.map((label) => <th key={label}>{label.replace("BR_", "").replace("US_", "")}</th>)}</tr></thead>
+              <tbody>{macroData.correlation.labels.map((row) => <tr key={row}><th title={macroData.correlation.names?.[row]}>{row.replace("BR_", "").replace("US_", "")}</th>{macroData.correlation.labels.map((column) => {
+                const cell = correlationLookup.get(`${row}:${column}`);
+                return <td key={column} style={{background: correlationBackground(cell?.value ?? null)}} title={`${macroData.correlation.names?.[row] ?? row} × ${macroData.correlation.names?.[column] ?? column} · ${cell?.observations ?? 0} observações`}>{cell?.value === null || cell?.value === undefined ? "—" : cell.value.toFixed(2)}</td>;
+              })}</tr>)}</tbody>
+            </table></div> : <div className="correlation-placeholder"><strong>Matriz preparada</strong><span>Será preenchida após a primeira sincronização conjunta de mercado e indicadores macroeconômicos.</span></div>}
+            <div className="correlation-legend"><span><i className="negative" /> relação inversa</span><span><i /> neutra</span><span><i className="positive" /> relação positiva</span><em>{macroData?.correlation.method ?? "Retornos dos ativos e variações dos indicadores serão alinhados por mês."}</em></div>
+          </div>
+          <p className="macro-source"><strong>Fontes:</strong> Banco Central do Brasil (SGS) e Federal Reserve Bank of St. Louis (FRED). Séries sujeitas a revisão; correlação não implica causalidade.</p>
+        </section>
 
         <section className="card ranking-card">
           <div className="ranking-head">

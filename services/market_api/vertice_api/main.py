@@ -10,26 +10,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from .catalog import CATALOG
 from .config import load_settings
 from .db import Database
+from .macro_catalog import MACRO_CATALOG
+from .providers.macro_official import MacroDataError, OfficialMacroProvider
 from .providers.yahoo_chart import MarketDataError, YahooChartProvider
 from .service import MarketService, UnknownAssetError
 
 settings = load_settings()
 database = Database(settings.database_url)
 provider = YahooChartProvider(settings.request_timeout_seconds)
-service = MarketService(database, provider, settings)
+macro_provider = OfficialMacroProvider(settings.request_timeout_seconds)
+service = MarketService(database, provider, settings, macro_provider)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     database.initialize()
     database.seed_assets(CATALOG)
+    database.seed_macro_series(MACRO_CATALOG)
     yield
 
 
 app = FastAPI(
     title="Vertice Market API",
     description="Daily market data, analytics and BDR parity for the Vertice dashboard.",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -127,6 +131,14 @@ def market_data_health() -> dict[str, object]:
     return service.data_health()
 
 
+@app.get("/v1/macro/dashboard")
+def macro_dashboard(months: int = Query(24, ge=12, le=60)) -> dict[str, object]:
+    try:
+        return service.macro_dashboard(months)
+    except MacroDataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.post("/v1/admin/sync")
 def scheduled_market_sync(
     x_sync_key: str | None = Header(None),
@@ -137,4 +149,4 @@ def scheduled_market_sync(
     if not x_sync_key or not hmac.compare_digest(x_sync_key, settings.sync_api_key):
         raise HTTPException(status_code=401, detail="Invalid sync credential")
     requested = [ticker.strip().upper() for ticker in tickers.split(",") if ticker.strip()] if tickers else None
-    return service.run_scheduled_sync(requested)
+    return service.run_scheduled_sync(requested) if requested else service.run_full_scheduled_sync()
