@@ -1,0 +1,23 @@
+name: Publish approved Sites source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the approved source
+        uses: actions/checkout@v4
+        with:
+          ref: fc4fc241a5f631787c424cf63113fd5648973fd5
+          fetch-depth: 0
+      - name: Push the exact source to Sites
+        env:
+          SITES_TOKEN: ${{ secrets.SITES_PUSH_TOKEN }}
+          SITES_REMOTE: https://git.chatgpt-team.site/537f7403-53f6-4336-a5ab-aa17289968b9/appgprj_6a7f0e727d988191886e44882b3fcf97.git
+        run: |
+          git -c http.extraHeader="Authorization: Bearer $SITES_TOKEN" push --force-with-lease=refs/heads/main:76f16c269f576c8400e44e4441e218d2fbbd469b "$SITES_REMOTE" HEAD:main
