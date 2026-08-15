@@ -64,28 +64,55 @@ class OfficialMacroProvider:
         return rows
 
     def _fred_history(self, series: MacroSeriesDefinition, years: int) -> list[dict[str, object]]:
+        return self.fred_histories([series], years)[series.code]
+
+    def fred_histories(
+        self,
+        series_list: list[MacroSeriesDefinition],
+        years: int = 5,
+    ) -> dict[str, list[dict[str, object]]]:
+        """Download multiple FRED series in one CSV request.
+
+        Render's free services can time out when four independent FRED graph
+        downloads are made in sequence. FRED accepts comma-separated series
+        identifiers, so a single request is both faster and gentler on the
+        upstream service.
+        """
+        if not series_list:
+            return {}
         start = date.today() - timedelta(days=366 * years)
-        query = urlencode({"id": series.provider_code, "cosd": start.isoformat()})
+        provider_codes = ",".join(series.provider_code for series in series_list)
+        query = urlencode({"id": provider_codes, "cosd": start.isoformat()})
         request = Request(
             f"{self.fred_url}?{query}",
             headers={"User-Agent": "VerticeMarketResearch/0.2"},
         )
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
+            with urlopen(request, timeout=max(self.timeout_seconds, 60)) as response:
                 content = response.read().decode("utf-8-sig")
         except (HTTPError, URLError, TimeoutError, UnicodeDecodeError) as exc:
-            raise MacroDataError(f"Unable to fetch {series.code} from FRED: {exc}") from exc
+            codes = ", ".join(series.code for series in series_list)
+            raise MacroDataError(f"Unable to fetch {codes} from FRED: {exc}") from exc
 
-        rows: list[dict[str, object]] = []
+        rows_by_code: dict[str, list[dict[str, object]]] = {
+            series.code: [] for series in series_list
+        }
         for item in csv.DictReader(io.StringIO(content)):
-            raw_value = item.get(series.provider_code)
             raw_date = item.get("observation_date") or item.get("DATE")
-            if not raw_date or not raw_value or raw_value == ".":
+            if not raw_date:
                 continue
-            try:
-                rows.append({"observation_date": date.fromisoformat(raw_date).isoformat(), "value": float(raw_value)})
-            except ValueError:
-                continue
-        if not rows:
-            raise MacroDataError(f"No FRED observations returned for {series.code}")
-        return rows
+            for series in series_list:
+                raw_value = item.get(series.provider_code)
+                if not raw_value or raw_value == ".":
+                    continue
+                try:
+                    rows_by_code[series.code].append({
+                        "observation_date": date.fromisoformat(raw_date).isoformat(),
+                        "value": float(raw_value),
+                    })
+                except ValueError:
+                    continue
+        missing = [code for code, rows in rows_by_code.items() if not rows]
+        if missing:
+            raise MacroDataError(f"No FRED observations returned for {', '.join(missing)}")
+        return rows_by_code

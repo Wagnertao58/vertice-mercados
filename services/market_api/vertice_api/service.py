@@ -193,10 +193,25 @@ class MarketService:
     def run_macro_sync(self) -> dict[str, object]:
         started_at = datetime.now(UTC)
         results: list[dict[str, object]] = []
+        fred_definitions = [definition for definition in MACRO_CATALOG if definition.provider == "fred_csv"]
+        fred_rows: dict[str, list[dict[str, object]]] = {}
+        fred_error: Exception | None = None
+        batch_loader = getattr(self.macro_provider, "fred_histories", None)
+        if fred_definitions and callable(batch_loader):
+            try:
+                fred_rows = batch_loader(fred_definitions)
+            except Exception as exc:
+                fred_error = exc
+
         for definition in MACRO_CATALOG:
             run_id = self.db.create_sync_run(definition.code)
             try:
-                rows = self.macro_provider.history(definition)
+                if definition.provider == "fred_csv" and callable(batch_loader):
+                    if fred_error:
+                        raise fred_error
+                    rows = fred_rows[definition.code]
+                else:
+                    rows = self.macro_provider.history(definition)
                 rows_received = self.db.upsert_macro_observations(definition.code, rows, definition.provider)
                 self.db.finish_sync_run(run_id, "success", rows_received)
                 results.append({"code": definition.code, "status": "success", "rows_received": rows_received})
