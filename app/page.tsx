@@ -98,6 +98,28 @@ type HistoryPoint = {
 
 type HistoryMode = "loading" | "live" | "fallback";
 
+type DataHealthItem = {
+  ticker: string;
+  status: "current" | "stale" | "error" | "missing";
+  last_price_date: string | null;
+  last_error: string | null;
+};
+
+type DataHealth = {
+  mode?: string;
+  status: "healthy" | "attention" | "empty";
+  checked_at: string;
+  total_assets: number;
+  current_assets: number;
+  stale_assets: number;
+  error_assets: number;
+  missing_assets: number;
+  coverage_pct: number;
+  total_price_rows: number;
+  last_update_at: string | null;
+  items: DataHealthItem[];
+};
+
 function formatHistoryDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
     .format(new Date(`${value}T12:00:00Z`))
@@ -118,6 +140,7 @@ export default function Home() {
   const [rankingClass, setRankingClass] = useState<ClassFilter>("stock");
   const [historyPoints, setHistoryPoints] = useState<HistoryPoint[]>([]);
   const [historyMode, setHistoryMode] = useState<HistoryMode>("loading");
+  const [dataHealth, setDataHealth] = useState<DataHealth | null>(null);
   const loadingRef = useRef(false);
   const watch = assets.slice(0, 5);
   const asset = assets.find((item) => item.ticker === selected) ?? assets[0];
@@ -178,11 +201,28 @@ export default function Home() {
     }
   }, []);
 
+  const loadDataHealth = useCallback(async () => {
+    try {
+      const response = await fetch("/api/data-health", { cache: "no-store" });
+      const payload = await response.json() as DataHealth;
+      if (!response.ok || payload.mode !== "live") throw new Error("Data health unavailable");
+      setDataHealth(payload);
+    } catch {
+      setDataHealth(null);
+    }
+  }, []);
+
   useEffect(() => {
     void loadMarketData(true);
     const timer = window.setInterval(() => void loadMarketData(), 5 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [loadMarketData]);
+
+  useEffect(() => {
+    void loadDataHealth();
+    const timer = window.setInterval(() => void loadDataHealth(), 5 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [loadDataHealth]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -220,7 +260,7 @@ export default function Home() {
 
       <section className="workspace">
         <header>
-          <div><p className="eyebrow">VISÃO GERAL</p><h1>Mercados em perspectiva</h1><p className="subtitle">Acompanhe ativos, risco e exposição cambial em um só lugar.</p><p className="auto-note">Atualização automática a cada 5 min</p></div>
+          <div><p className="eyebrow">VISÃO GERAL</p><h1>Mercados em perspectiva</h1><p className="subtitle">Acompanhe ativos, risco e exposição cambial em um só lugar.</p><p className="auto-note">Painel a cada 5 min · histórico diário às 19h30</p></div>
           <div className="header-actions"><button className="refresh" onClick={() => void loadMarketData()} disabled={isRefreshing}>{isRefreshing ? "Atualizando…" : "Atualizar dados"}</button><button className="date">14 AGO 2026 <span>⌄</span></button><button className="avatar">WG</button></div>
         </header>
 
@@ -289,6 +329,22 @@ export default function Home() {
         <section className="card explorer">
           <div className="card-head"><div><p className="eyebrow">EXPLORADOR MULTIATIVOS</p><h3>Ações, BDRs, moedas e índices</h3></div><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar ticker, empresa ou mercado..." aria-label="Buscar ativo" /></div>
           <div className="asset-chips">{filtered.map(item => <button key={item.ticker} onClick={() => {setSelected(item.ticker); setQuery("")}}><span style={{background:item.color}}>{item.ticker[0]}</span><strong>{item.ticker}</strong><small>{item.market}</small></button>)}</div>
+        </section>
+
+        <section className="card data-health-card">
+          <div className="health-head">
+            <div><p className="eyebrow">SAÚDE DOS DADOS</p><h3>Coleta e cobertura histórica</h3><p>A rotina diária verifica cada ativo e registra qualquer falha para recuperação.</p></div>
+            <span className={`health-badge ${dataHealth?.status === "healthy" ? "healthy" : "attention"}`}><i />{dataHealth ? dataHealth.status === "healthy" ? "Operação estável" : "Requer atenção" : "Conectando monitor"}</span>
+          </div>
+          {dataHealth ? <>
+            <div className="health-metrics">
+              <div><small>ATIVOS ATUAIS</small><strong>{dataHealth.current_assets}<em>/{dataHealth.total_assets}</em></strong></div>
+              <div><small>COBERTURA</small><strong>{dataHealth.coverage_pct.toFixed(1)}<em>%</em></strong></div>
+              <div><small>REGISTROS HISTÓRICOS</small><strong>{Intl.NumberFormat("pt-BR", { notation: "compact" }).format(dataHealth.total_price_rows)}</strong></div>
+              <div><small>PENDÊNCIAS</small><strong>{dataHealth.stale_assets + dataHealth.error_assets + dataHealth.missing_assets}</strong></div>
+            </div>
+            <div className="health-footer"><span>Última verificação: {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(dataHealth.checked_at))}</span><div>{dataHealth.items.filter((item) => item.status !== "current").slice(0, 5).map((item) => <span key={item.ticker} className={`health-issue ${item.status}`}>{item.ticker} · {item.status === "stale" ? "atrasado" : item.status === "error" ? "falha" : "sem histórico"}</span>)}</div></div>
+          </> : <p className="health-placeholder">O monitor será preenchido assim que a API concluir a consulta de integridade.</p>}
         </section>
       </section>
     </main>

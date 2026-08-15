@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hmac
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .catalog import CATALOG
@@ -28,7 +29,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Vertice Market API",
     description="Daily market data, analytics and BDR parity for the Vertice dashboard.",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -119,3 +120,21 @@ def market_overview(
         "assets": snapshots,
         "errors": errors,
     }
+
+
+@app.get("/v1/market/data-health")
+def market_data_health() -> dict[str, object]:
+    return service.data_health()
+
+
+@app.post("/v1/admin/sync")
+def scheduled_market_sync(
+    x_sync_key: str | None = Header(None),
+    tickers: str | None = Query(None),
+) -> dict[str, object]:
+    if not settings.sync_api_key:
+        raise HTTPException(status_code=503, detail="Scheduled sync is not configured")
+    if not x_sync_key or not hmac.compare_digest(x_sync_key, settings.sync_api_key):
+        raise HTTPException(status_code=401, detail="Invalid sync credential")
+    requested = [ticker.strip().upper() for ticker in tickers.split(",") if ticker.strip()] if tickers else None
+    return service.run_scheduled_sync(requested)

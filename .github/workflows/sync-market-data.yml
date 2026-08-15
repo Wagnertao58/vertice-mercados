@@ -1,0 +1,37 @@
+name: Atualizar histórico de mercado
+
+on:
+  schedule:
+    # 19h30 no horário de Brasília, de segunda a sexta-feira.
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: vertice-market-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validar configuração
+        env:
+          SYNC_API_KEY: ${{ secrets.VERTICE_SYNC_API_KEY }}
+        run: test -n "$SYNC_API_KEY"
+
+      - name: Acordar o serviço
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 10 --retry-all-errors --max-time 120 https://vertice-market-api.onrender.com/health
+
+      - name: Atualizar todos os ativos
+        env:
+          SYNC_API_KEY: ${{ secrets.VERTICE_SYNC_API_KEY }}
+        run: >-
+          curl --fail --silent --show-error
+          --retry 3 --retry-delay 15 --retry-all-errors --max-time 600
+          -X POST
+          -H "X-Sync-Key: $SYNC_API_KEY"
+          https://vertice-market-api.onrender.com/v1/admin/sync

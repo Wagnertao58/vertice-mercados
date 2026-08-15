@@ -34,12 +34,14 @@ test("server-renders the Vertice dashboard", async () => {
   assert.match(html, /Atlassian/);
   assert.match(html, /BDRs &amp; spreads/);
   assert.match(html, /Conector Python preparado/);
-  assert.match(html, /Atualização automática a cada 5 min/);
+  assert.match(html, /histórico diário às 19h30/);
   assert.match(html, /USD-BRL/);
   assert.match(html, /Valorização com menor variância/);
   assert.match(html, /Score relativo/);
   assert.match(html, /40% retorno em 1 mês/);
   assert.match(html, /Consultando histórico/);
+  assert.match(html, /SAÚDE DOS DADOS/);
+  assert.match(html, /Coleta e cobertura histórica/);
   assert.doesNotMatch(html, /codex-preview/);
   assert.doesNotMatch(html, /react-loading-skeleton/);
 });
@@ -60,4 +62,12 @@ test("returns a safe historical fallback while the market API is not configured"
   const payload = await response.json();
   assert.equal(payload.mode, "demo");
   assert.deepEqual(payload.points, []);
+});
+
+test("returns a safe data-health fallback while the market API is not configured", async () => {
+  const worker = await loadWorker("data-health-api");
+  const response = await worker.fetch(new Request("http://localhost/api/data-health"), {});
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.mode, "demo");
 });

@@ -17,3 +17,5 @@ services:
         value: "720"
       - key: MARKET_REQUEST_TIMEOUT
         value: "20"
+      - key: SYNC_API_KEY
+        sync: false

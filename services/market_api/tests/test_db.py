@@ -29,6 +29,11 @@ class DatabaseTests(unittest.TestCase):
             )
             self.assertEqual(inserted, 1)
             self.assertEqual(db.get_prices("TEAM")[0]["close"], 104)
+            run_id = db.create_sync_run("TEAM")
+            db.finish_sync_run(run_id, "success", inserted)
+            health = {item["ticker"]: item for item in db.data_health()}
+            self.assertEqual(health["TEAM"]["last_sync_status"], "success")
+            self.assertEqual(health["TEAM"]["price_rows"], 1)
 
 
 if __name__ == "__main__":

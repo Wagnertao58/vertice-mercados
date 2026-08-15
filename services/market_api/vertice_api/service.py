@@ -104,6 +104,73 @@ class MarketService:
             "points": points,
         }
 
+    def run_scheduled_sync(self, tickers: list[str] | None = None) -> dict[str, object]:
+        requested = {ticker.upper() for ticker in tickers or []}
+        assets = [
+            asset for asset in self.db.list_assets()
+            if not requested or str(asset["ticker"]).upper() in requested
+        ]
+        started_at = datetime.now(UTC)
+        results: list[dict[str, object]] = []
+        for asset in assets:
+            ticker = str(asset["ticker"])
+            run_id = self.db.create_sync_run(ticker)
+            try:
+                rows = self.provider.history(str(asset["provider_symbol"]))
+                rows_received = self.db.upsert_prices(ticker, rows, self.provider.name)
+                self.db.finish_sync_run(run_id, "success", rows_received)
+                results.append({"ticker": ticker, "status": "success", "rows_received": rows_received})
+            except Exception as exc:
+                message = str(exc)[:500]
+                self.db.finish_sync_run(run_id, "failed", 0, message)
+                results.append({"ticker": ticker, "status": "failed", "rows_received": 0, "error": message})
+
+        succeeded = sum(item["status"] == "success" for item in results)
+        failed = len(results) - succeeded
+        return {
+            "status": "ok" if failed == 0 else "partial" if succeeded else "failed",
+            "started_at": started_at.isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
+            "assets_requested": len(assets),
+            "assets_succeeded": succeeded,
+            "assets_failed": failed,
+            "results": results,
+        }
+
+    def data_health(self) -> dict[str, object]:
+        now = datetime.now(UTC)
+        stale_before = now - timedelta(hours=72)
+        items: list[dict[str, object]] = []
+        for row in self.db.data_health():
+            fetched_at_value = row.get("last_fetched_at")
+            fetched_at = datetime.fromisoformat(str(fetched_at_value)) if fetched_at_value else None
+            if int(row.get("price_rows") or 0) == 0:
+                status = "missing"
+            elif row.get("last_sync_status") == "failed":
+                status = "error"
+            elif not fetched_at or fetched_at < stale_before:
+                status = "stale"
+            else:
+                status = "current"
+            items.append({**row, "status": status})
+
+        counts = {status: sum(item["status"] == status for item in items) for status in ("current", "stale", "error", "missing")}
+        latest_updates = [str(item["last_fetched_at"]) for item in items if item.get("last_fetched_at")]
+        total = len(items)
+        return {
+            "status": "healthy" if total and counts["current"] == total else "attention" if total else "empty",
+            "checked_at": now.isoformat(),
+            "total_assets": total,
+            "current_assets": counts["current"],
+            "stale_assets": counts["stale"],
+            "error_assets": counts["error"],
+            "missing_assets": counts["missing"],
+            "coverage_pct": round((total - counts["missing"]) / total * 100, 1) if total else 0.0,
+            "total_price_rows": sum(int(item.get("price_rows") or 0) for item in items),
+            "last_update_at": max(latest_updates) if latest_updates else None,
+            "items": items,
+        }
+
     def bdr_parity(self, ticker: str, force: bool = False) -> dict[str, object]:
         bdr = self.asset(ticker)
         if bdr.asset_class != "bdr" or not bdr.underlying or not bdr.bdr_ratio:

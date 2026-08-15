@@ -1,32 +1,43 @@
-# V?rtice Mercados
+# Vértice Mercados
 
-Dashboard privado para acompanhar a??es brasileiras e norte-americanas, BDRs,
-?ndices e moedas. A primeira fase re?ne pre?os di?rios, m?tricas de retorno e
-risco e compara??es de paridade entre a??es no exterior e seus BDRs na B3.
+Plataforma de inteligência de mercado para acompanhar ações brasileiras e norte-americanas, BDRs, índices e moedas. O projeto combina coleta, histórico, métricas de risco e visualização em um dashboard privado.
+
+## Estado atual
+
+- Dashboard publicado no Sites.
+- API Python/FastAPI hospedada no Render.
+- Histórico persistido em PostgreSQL no Supabase.
+- Atualização visual a cada 5 minutos.
+- Coleta diária automatizada às 19h30, em dias úteis.
+- Ranking de valorização consistente e consulta histórica de 1 dia a 5 anos.
 
 ## Estrutura
 
-- `app/`: dashboard publicado no Sites.
-- `app/api/market/`: liga??o segura entre o dashboard e a API de mercado.
-- `services/market_api/`: servi?o Python/FastAPI de coleta, persist?ncia e an?lise.
-- `services/market_api/tests/`: testes das m?tricas e do armazenamento.
+- `app/`: dashboard e rotas intermediárias publicadas no Sites.
+- `services/market_api/`: coleta, persistência, métricas e contratos da API.
+- `.github/workflows/`: agenda automática de atualização do histórico.
+- `docs/ROADMAP.md`: fases, entregas e próximos marcos do produto.
+- `services/market_api/tests/`: testes de métricas, banco e coleta.
 
-## Dashboard
+## Coleta automática
 
-Requer Node.js 22.13 ou superior.
+O GitHub Actions chama a rota protegida da API de segunda a sexta-feira. A mesma chave deve ser cadastrada em dois lugares, sem ser incluída no código:
+
+1. Render: variável secreta `SYNC_API_KEY`.
+2. GitHub: segredo do repositório `VERTICE_SYNC_API_KEY`.
+
+A tela “Saúde dos dados” apresenta cobertura, quantidade de registros e ativos atrasados, ausentes ou com falha.
+
+## Desenvolvimento local
+
+Requer Node.js 22.13 ou superior e Python 3.11 ou superior.
 
 ```powershell
 pnpm install
 pnpm dev
 ```
 
-Para conectar o dashboard ? API, configure:
-
-```text
-MARKET_API_URL=http://localhost:8000
-```
-
-## API de mercado
+Para executar a API:
 
 ```powershell
 cd services/market_api
@@ -34,9 +45,9 @@ python -m pip install -r requirements.txt
 python -m uvicorn vertice_api.main:app --reload --port 8000
 ```
 
-A documenta??o interativa fica em `http://localhost:8000/docs`.
+Use os arquivos `.env.example` como referência. Nunca envie senhas ou chaves para o repositório.
 
-## Valida??o
+## Validação
 
 ```powershell
 pnpm test
@@ -46,12 +57,8 @@ python -m unittest discover -s tests -v
 
 ## Fonte de dados
 
-O conector inicial usa uma fonte p?blica n?o oficial exclusivamente para o
-prot?tipo. Antes de uso em produ??o, ele dever? ser substitu?do por uma fonte
-est?vel e licenciada. A separa??o por provedores permite essa troca sem alterar
-o dashboard ou os contratos da API.
+O conector inicial usa uma fonte pública não oficial para o protótipo. Antes de uso profissional ou comercial, ele deverá ser substituído por uma fonte estável e licenciada. A arquitetura por provedores permite essa troca sem alterar o dashboard.
 
 ## Aviso
 
-O V?rtice ? uma ferramenta de an?lise e acompanhamento. As informa??es e
-m?tricas apresentadas n?o constituem recomenda??o de investimento.
+O Vértice é uma ferramenta de análise e acompanhamento. As informações e métricas apresentadas não constituem recomendação de investimento.

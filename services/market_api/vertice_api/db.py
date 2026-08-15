@@ -113,6 +113,9 @@ class _Backend(Protocol):
     def upsert_prices(self, ticker: str, rows: Iterable[dict[str, object]], provider: str) -> int: ...
     def get_prices(self, ticker: str, limit: int = 260) -> list[dict[str, object]]: ...
     def latest_fetch(self, ticker: str) -> datetime | None: ...
+    def create_sync_run(self, ticker: str) -> int: ...
+    def finish_sync_run(self, run_id: int, status: str, rows_received: int, error_message: str | None = None) -> None: ...
+    def data_health(self) -> list[dict[str, object]]: ...
     def ping(self) -> None: ...
 
 
@@ -211,6 +214,54 @@ class _SqliteBackend:
             ).fetchone()
         value = row["fetched_at"] if row else None
         return datetime.fromisoformat(value) if value else None
+
+    def create_sync_run(self, ticker: str) -> int:
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "INSERT INTO sync_runs (ticker, started_at, status) VALUES (?, ?, ?)",
+                (ticker, datetime.now(UTC).isoformat(), "running"),
+            )
+            return int(cursor.lastrowid)
+
+    def finish_sync_run(self, run_id: int, status: str, rows_received: int, error_message: str | None = None) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """UPDATE sync_runs SET finished_at=?, status=?, rows_received=?, error_message=?
+                WHERE id=?""",
+                (datetime.now(UTC).isoformat(), status, rows_received, error_message, run_id),
+            )
+
+    def data_health(self) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.ticker, a.name, a.market, a.asset_class,
+                    COUNT(p.price_date) AS price_rows,
+                    MIN(p.price_date) AS first_price_date,
+                    MAX(p.price_date) AS last_price_date,
+                    MAX(p.fetched_at) AS last_fetched_at,
+                    latest.status AS last_sync_status,
+                    latest.finished_at AS last_sync_at,
+                    latest.rows_received AS last_rows_received,
+                    latest.error_message AS last_error
+                FROM assets a
+                LEFT JOIN daily_prices p ON p.ticker=a.ticker
+                LEFT JOIN (
+                    SELECT ticker, status, finished_at, rows_received, error_message
+                    FROM (
+                        SELECT ticker, status, finished_at, rows_received, error_message,
+                            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY started_at DESC, id DESC) AS row_number
+                        FROM sync_runs
+                    ) ranked
+                    WHERE row_number=1
+                ) latest ON latest.ticker=a.ticker
+                WHERE a.active=1
+                GROUP BY a.ticker, a.name, a.market, a.asset_class,
+                    latest.status, latest.finished_at, latest.rows_received, latest.error_message
+                ORDER BY a.asset_class, a.ticker
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def ping(self) -> None:
         with self.connection() as conn:
@@ -316,6 +367,55 @@ class _PostgresBackend:
         value = row["fetched_at"] if row else None
         return datetime.fromisoformat(value) if value else None
 
+    def create_sync_run(self, ticker: str) -> int:
+        with self.connection() as conn:
+            row = conn.execute(
+                """INSERT INTO sync_runs (ticker, started_at, status)
+                VALUES (%s, %s, %s) RETURNING id""",
+                (ticker, datetime.now(UTC).isoformat(), "running"),
+            ).fetchone()
+        return int(row["id"])
+
+    def finish_sync_run(self, run_id: int, status: str, rows_received: int, error_message: str | None = None) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """UPDATE sync_runs SET finished_at=%s, status=%s, rows_received=%s, error_message=%s
+                WHERE id=%s""",
+                (datetime.now(UTC).isoformat(), status, rows_received, error_message, run_id),
+            )
+
+    def data_health(self) -> list[dict[str, object]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.ticker, a.name, a.market, a.asset_class,
+                    COUNT(p.price_date) AS price_rows,
+                    MIN(p.price_date) AS first_price_date,
+                    MAX(p.price_date) AS last_price_date,
+                    MAX(p.fetched_at) AS last_fetched_at,
+                    latest.status AS last_sync_status,
+                    latest.finished_at AS last_sync_at,
+                    latest.rows_received AS last_rows_received,
+                    latest.error_message AS last_error
+                FROM assets a
+                LEFT JOIN daily_prices p ON p.ticker=a.ticker
+                LEFT JOIN (
+                    SELECT ticker, status, finished_at, rows_received, error_message
+                    FROM (
+                        SELECT ticker, status, finished_at, rows_received, error_message,
+                            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY started_at DESC, id DESC) AS row_number
+                        FROM sync_runs
+                    ) ranked
+                    WHERE row_number=1
+                ) latest ON latest.ticker=a.ticker
+                WHERE a.active=TRUE
+                GROUP BY a.ticker, a.name, a.market, a.asset_class,
+                    latest.status, latest.finished_at, latest.rows_received, latest.error_message
+                ORDER BY a.asset_class, a.ticker
+                """
+            ).fetchall()
+        return list(rows)
+
     def ping(self) -> None:
         with self.connection() as conn:
             conn.execute("SELECT 1").fetchone()
@@ -353,6 +453,15 @@ class Database:
 
     def latest_fetch(self, ticker: str) -> datetime | None:
         return self._backend.latest_fetch(ticker)
+
+    def create_sync_run(self, ticker: str) -> int:
+        return self._backend.create_sync_run(ticker)
+
+    def finish_sync_run(self, run_id: int, status: str, rows_received: int, error_message: str | None = None) -> None:
+        self._backend.finish_sync_run(run_id, status, rows_received, error_message)
+
+    def data_health(self) -> list[dict[str, object]]:
+        return self._backend.data_health()
 
     def ping(self) -> None:
         self._backend.ping()

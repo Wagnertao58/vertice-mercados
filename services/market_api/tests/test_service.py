@@ -58,6 +58,22 @@ class MarketServiceHistoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 service.history("TEAM", "2A")
 
+    def test_scheduled_sync_records_health_for_selected_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            db = Database(Path(directory) / "scheduled.db")
+            db.initialize()
+            db.seed_assets(CATALOG)
+            settings = Settings("", "http://localhost:3000", 30, 15, "secret")
+            service = MarketService(db, FakeProvider(), settings)  # type: ignore[arg-type]
+
+            result = service.run_scheduled_sync(["TEAM", "RNG"])
+            health = service.data_health()
+
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["assets_succeeded"], 2)
+            self.assertEqual(health["current_assets"], 2)
+            self.assertGreater(health["total_price_rows"], 500)
+
 
 if __name__ == "__main__":
     unittest.main()

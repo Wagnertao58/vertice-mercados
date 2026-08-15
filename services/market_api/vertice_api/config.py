@@ -11,6 +11,7 @@ class Settings:
     dashboard_origin: str
     cache_minutes: int
     request_timeout_seconds: int
+    sync_api_key: str = ""
 
 
 def _sqlite_url(path: Path) -> str:
@@ -29,4 +30,5 @@ def load_settings() -> Settings:
         dashboard_origin=os.getenv("DASHBOARD_ORIGIN", "http://localhost:3000"),
         cache_minutes=int(os.getenv("MARKET_CACHE_MINUTES", "30")),
         request_timeout_seconds=int(os.getenv("MARKET_REQUEST_TIMEOUT", "15")),
+        sync_api_key=os.getenv("SYNC_API_KEY", "").strip(),
     )
